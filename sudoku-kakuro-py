@@ -1,0 +1,122 @@
+!pip install python-constraint
+!pip install colorama
+from constraint import Problem, AllDifferentConstraint
+import json
+import tkinter as tk
+# from PIL import Image, ImageTk
+from colorama import Fore, Style, init
+init(autoreset=True)
+
+def print_kakuro_solution(kakuro_data, final_vars):
+    black_cells = set(tuple(cell) for cell in kakuro_data["Black"])
+    sum_cells_h = {tuple(s["start"]): s for s in kakuro_data["sums"]["horizontal"]}
+    sum_cells_v = {tuple(s["start"]): s for s in kakuro_data["sums"]["vertical"]}
+
+    for row in range(9):
+        line = ""
+        for col in range(9):
+            pos = (row, col)
+            key = f"{row}{col}"
+
+            if pos in black_cells:
+                line += f"{Fore.BLACK + Style.BRIGHT} * \t"
+            elif pos in sum_cells_h or pos in sum_cells_v:
+                h_sum = str(sum_cells_h[pos]["total"]) if pos in sum_cells_h else ""
+                v_sum = str(sum_cells_v[pos]["total"]) if pos in sum_cells_v else ""
+                line += f"{Fore.RED + Style.BRIGHT}{v_sum}\\{h_sum}\t"
+            else:
+                if final_vars[key] != {0} and final_vars[key] != {-1}:
+                    val = next(iter(final_vars[key]))
+                    line += f"{Fore.BLUE + Style.BRIGHT} {val} \t"
+                else:
+                    line += "   \t"
+        print(line)
+        print()
+
+
+def load_kakuro_json(filename):
+    with open(filename, 'r') as file:
+        return json.load(file)
+
+def get_cells_in_sum(start, length, direction):
+    cells = []
+    row, col = start
+    for i in range(length):
+        if direction == "horizontal":
+            cells.append((row, col + i))
+        else:
+            cells.append((row + i, col))
+    return cells
+
+def add_sum_constraints(kakuro_data):
+    constraints = []
+    for sum_info in kakuro_data["sums"]["horizontal"]:
+        start = sum_info["start"]
+        total = sum_info["total"]
+        length = sum_info["length"]
+        cells = get_cells_in_sum((start[0], start[1]+1), length, "horizontal")
+        constraints.append(("horizontal", cells, total))
+
+    for sum_info in kakuro_data["sums"]["vertical"]:
+        start = sum_info["start"]
+        total = sum_info["total"]
+        length = sum_info["length"]
+        cells = get_cells_in_sum((start[0]+1, start[1]), length, "vertical")
+        constraints.append(("vertical", cells, total))
+    return constraints
+
+def solve_kakuro_with_library(filename):
+    kakuro_data = load_kakuro_json(filename)
+    problem = Problem()
+
+    constraints = add_sum_constraints(kakuro_data)
+    black_cells = set(tuple(cell) for cell in kakuro_data["Black"])
+    sum_cells = set()
+
+    for sum_info in kakuro_data["sums"]["horizontal"]:
+        sum_cells.add(tuple(sum_info["start"]))
+    for sum_info in kakuro_data["sums"]["vertical"]:
+        sum_cells.add(tuple(sum_info["start"]))
+
+    all_vars = {}
+
+    # Agregar variables
+    for row in range(9):
+        for col in range(9):
+            pos = (row, col)
+            name = f"{row}{col}"
+            if pos not in black_cells and pos not in sum_cells:
+                all_vars[pos] = name
+                problem.addVariable(name, range(1, 10))
+
+    # Agregar restricciones
+    for _, cells, total in constraints:
+        var_names = [all_vars[pos] for pos in cells if pos in all_vars]
+        problem.addConstraint(AllDifferentConstraint(), var_names)
+        problem.addConstraint(lambda *vals, total=total: sum(vals) == total, var_names)
+
+    solution = problem.getSolution()
+    if solution:
+        # Convertir a formato de impresión
+        final_vars = {}
+        for row in range(9):
+            for col in range(9):
+                key = f"{row}{col}"
+                pos = (row, col)
+                if pos in black_cells:
+                    final_vars[key] = {0}
+                elif pos in sum_cells:
+                    final_vars[key] = {-1}
+                elif key in solution:
+                    final_vars[key] = {solution[key]}
+                else:
+                    final_vars[key] = {0}
+        print("\nSolución encontrada:")
+        # draw_kakuro_solution(kakuro_data, final_vars, image_path="imagen.png")
+        print_kakuro_solution(kakuro_data, final_vars)
+
+    else:
+        print("\nNo se encontró solución.")
+
+# Ejecutar resolución del kakuro
+solve_kakuro_with_library("ProgIIIG1-Act08-KK5COTUG-Board.JSON")
